@@ -15,8 +15,11 @@ These are exposed to the test suite through ``tests/adapters.py``
 from __future__ import annotations
 
 import os
+import regex as re
 from collections.abc import Iterable, Iterator
+from collections import Counter
 
+PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 
 def train_bpe(
     input_path: str | os.PathLike,
@@ -25,15 +28,6 @@ def train_bpe(
     **kwargs,
 ) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
     """Train a byte-level BPE tokenizer on the corpus at ``input_path``.
-
-    The training procedure:
-      1. Initialize the vocabulary with the 256 byte values and the given
-         special tokens.
-      2. Pre-tokenize the corpus (splitting on special tokens first, then on
-         the GPT-2 regex pattern), counting the frequency of each pre-token.
-      3. Repeatedly merge the most frequent adjacent byte pair (breaking ties
-         by preferring the lexicographically greater pair) until the vocabulary
-         reaches ``vocab_size``.
 
     Args:
         input_path: Path to a UTF-8 text file to train on.
@@ -47,7 +41,63 @@ def train_bpe(
         merges: Ordered list of merged byte-pairs ``(token1, token2)``, in the
             order the merges were created.
     """
-    raise NotImplementedError
+
+    """
+    my notes
+    
+    word is list of tokens. token is one or more utf-8 bytes.
+
+    - read file as unicode text
+    - split (and drop) by special tokens
+    - pre-tokenize with regex to word -> cnt
+    - encode word from unicode to utf-8
+    - merge top token pair, then update each word, until given vocab size
+    """
+
+    def update(word):
+        updated = []
+        i = 0
+        while i < len(word) - 1:
+            if word[i:i+2] == top_token_pair:
+                updated.append(new_token)
+                i += 2
+            else:
+                updated.append(word[i])
+                i += 1
+        if i == len(word) - 1:
+            updated.append(word[i])
+        
+        return tuple(updated)
+
+    split_re = "|".join([re.escape(token) for token in special_tokens])
+
+    word_cnt = Counter()
+    with open(input_path) as f:
+        text = f.read()
+        for split in re.split(split_re, text):
+            for word in re.findall(PAT, split):
+                utf8 = word.encode("utf-8")
+                word_cnt[tuple(bytes([byte]) for byte in utf8)] += 1
+
+    vocab = [bytes([i]) for i in range(256)] + [token.encode("utf-8") for token in special_tokens]
+    merges = []
+
+    while len(vocab) < vocab_size:
+        token_pair_cnt = Counter()
+        for word, cnt in word_cnt.items():
+            for i in range(len(word) - 1):
+                token_pair_cnt[(word[i], word[i+1])] += cnt
+        
+        _, top_token_pair = max((cnt, token_pair) for token_pair, cnt in token_pair_cnt.items())
+        
+        merges.append(top_token_pair)
+        new_token = b"".join(top_token_pair)
+        vocab.append(new_token)
+
+        word_cnt = Counter({update(word): cnt for word, cnt in word_cnt.items()})
+
+    inverted_vocab = { i : token for i, token in enumerate(vocab)}
+    return inverted_vocab, merges
 
 
 class Tokenizer:
