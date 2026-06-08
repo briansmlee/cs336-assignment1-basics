@@ -72,4 +72,30 @@ class RMSNorm(nn.Module):
         squared = x * x
         summed = reduce(squared, "... d_model -> ... 1", "mean")
         rms = torch.sqrt(summed + self.eps)
-        return (x / rms * self.G).to(x.dtype)
+        result = x / rms * self.G
+        return result.to(x.dtype)
+
+
+def swiglu(x: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:
+    return x * torch.sigmoid(x)
+
+
+class Feedforward(nn.Module):
+
+    def __init__(
+        self,
+        d_model: int,
+        d_ff: int,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
+    ) -> None:
+        super().__init__()
+
+        self.gate_proj = Linear(d_in=d_model, d_out=d_ff, device=device, dtype=dtype)
+        self.up_proj = Linear(d_in=d_model, d_out=d_ff, device=device, dtype=dtype)
+        self.down_proj = Linear(d_in=d_ff, d_out=d_model, device=device, dtype=dtype)
+
+    def forward(
+        self, x: Float[Tensor, " ... d_model"]
+    ) -> Float[Tensor, " ... d_model"]:
+        return self.down_proj(swiglu(self.gate_proj(x)) * self.up_proj(x))

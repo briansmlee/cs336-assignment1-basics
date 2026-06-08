@@ -90,7 +90,13 @@ def run_swiglu(
     # swiglu.w1.weight.data = w1_weight
     # swiglu.w2.weight.data = w2_weight
     # swiglu.w3.weight.data = w3_weight
-    raise NotImplementedError
+    from cs336_basics.transformer import Feedforward
+
+    ff = Feedforward(d_model=d_model, d_ff=d_ff)
+    ff.load_state_dict(
+        {"gate_proj.W": w1_weight, "up_proj.W": w3_weight, "down_proj.W": w2_weight}
+    )
+    return ff(in_features)
 
 
 def run_scaled_dot_product_attention(
