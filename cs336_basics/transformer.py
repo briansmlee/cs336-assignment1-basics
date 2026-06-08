@@ -99,3 +99,23 @@ class Feedforward(nn.Module):
         self, x: Float[Tensor, " ... d_model"]
     ) -> Float[Tensor, " ... d_model"]:
         return self.down_proj(swiglu(self.gate_proj(x)) * self.up_proj(x))
+
+
+def softmax(x: Float[Tensor, " ... "], dim: int):
+    max = torch.amax(x, dim=dim, keepdim=True)
+    z = (x - max).exp()
+    return z / z.sum(dim=dim, keepdim=True)
+
+
+def scaled_dot_product_attention(
+    Q: Float[Tensor, " ... queries d_k"],
+    K: Float[Tensor, " ... keys d_k"],
+    V: Float[Tensor, " ... keys d_v"],
+    mask: Bool[Tensor, " ... queries keys"] | None = None,
+) -> Float[Tensor, " ... queries d_v"]:
+    QK = einsum(Q, K, "... queries d_k, ... keys d_k -> ... queries keys")
+    d_k = K.shape[-1]
+    scores = QK / sqrt(d_k)
+    scores = scores.masked_fill(~mask, float("-inf"))
+    scores = softmax(scores, dim=-1)
+    return einsum(scores, V, "... queries keys, ... keys d_v -> ... queries d_v")
