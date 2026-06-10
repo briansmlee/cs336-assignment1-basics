@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from einops import einsum, reduce
+from einops import einsum, reduce, rearrange, repeat
 from math import sqrt
 from torch import Tensor
 from jaxtyping import Bool, Float, Int
@@ -101,6 +101,40 @@ class Feedforward(nn.Module):
         return self.down_proj(swiglu(self.gate_proj(x)) * self.up_proj(x))
 
 
+class RoPE(nn.Module):
+
+    def __init__(
+        self,
+        d_keys: int,
+        theta: float,
+        max_seq_len: int,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
+    ):
+        """
+        - there is one R_pos of size d_keys * d_keys, for each sequence position pos
+        angle(pos, dim) = pos / {theta ^ {2i / d_keys}}
+        """
+        inverse_frequency = theta ** (torch.arange(0, d_keys / 2, 2) / d_keys)
+        sequence_positions = torch.arange(max_seq_len)
+        # angles = torch.outer(sequence_positions, inverse_frequency)
+        angles = einsum(
+            sequence_positions,
+            inverse_frequency,
+            "seq_len, d_keys_half -> seq_len d_keys_half",
+        )
+        angles = repeat(angles, "... d_keys_half -> ... (d_keys_half two)", two=2)
+        self.register_buffer("sins", angles.sin(), persistent=False)
+        self.register_buffer("coss", angles.cos(), persistent=False)
+
+    def forward(
+        self,
+        in_query_or_key: Float[Tensor, " ... sequence_length d_keys"],
+        token_positions: Int[Tensor, " ... sequence_length"],
+    ):
+        raise NotImplementedError
+
+
 def softmax(x: Float[Tensor, " ... "], dim: int):
     max = torch.amax(x, dim=dim, keepdim=True)
     z = (x - max).exp()
@@ -119,3 +153,31 @@ def scaled_dot_product_attention(
     scores = scores.masked_fill(~mask, float("-inf"))
     scores = softmax(scores, dim=-1)
     return einsum(scores, V, "... queries keys, ... keys d_v -> ... queries d_v")
+
+
+class MultiheadSelfAttention(nn.Module):
+
+    def __init__(
+        self,
+        d_model: int,
+        num_heads: int,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
+    ):
+        self.q_proj = Linear(d_in=d_model, d_out=d_model, device=device, dtype=dtype)
+        self.k_proj = Linear(d_in=d_model, d_out=d_model, device=device, dtype=dtype)
+        self.v_proj = Linear(d_in=d_model, d_out=d_model, device=device, dtype=dtype)
+        self.o_proj = Linear(d_in=d_model, d_out=d_model, device=device, dtype=dtype)
+
+    def forward(
+        self, x: Float[Tensor, " ... sequence_length d_model"]
+    ) -> Float[Tensor, " ... sequence_length d_model"]:
+        Q = rearrange(
+            self.q_proj(x),
+            " ... sequence_length (num_heads d_k) -> ... num_heads sequence_length d_k",
+        )
+        K = rearrange(
+            self.k_proj(x),
+            " ... sequence_length ( d_k) -> ... num_heads sequence_length d_k",
+        )
+        V = self.v_proj(x)
