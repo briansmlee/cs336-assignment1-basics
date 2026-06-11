@@ -215,7 +215,11 @@ def run_rope(
     Returns:
         Float[Tensor, " ... sequence_length d_k"]: Tensor with RoPEd input.
     """
-    raise NotImplementedError
+    rope = RoPE(d_k, theta, max_seq_len)
+    # use split-half RoPE, not adjacent version
+    permuted = rearrange(in_query_or_key, "... (half two) -> ... (two half)", two=2)
+    rotated = rope(permuted, token_positions)
+    return rearrange(rotated, "... (two half) -> ... (half two)", two=2)
 
 
 def run_transformer_block(

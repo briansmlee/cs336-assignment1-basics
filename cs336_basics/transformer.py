@@ -115,7 +115,9 @@ class RoPE(nn.Module):
         - there is one R_pos of size d_keys * d_keys, for each sequence position pos
         angle(pos, dim) = pos / {theta ^ {2i / d_keys}}
         """
-        inverse_frequency = theta ** (torch.arange(0, d_keys / 2, 2) / d_keys)
+        super().__init__()
+
+        inverse_frequency = theta ** -(torch.arange(0, d_keys, 2) / d_keys)
         sequence_positions = torch.arange(max_seq_len)
         # angles = torch.outer(sequence_positions, inverse_frequency)
         angles = einsum(
@@ -123,16 +125,25 @@ class RoPE(nn.Module):
             inverse_frequency,
             "seq_len, d_keys_half -> seq_len d_keys_half",
         )
-        angles = repeat(angles, "... d_keys_half -> ... (d_keys_half two)", two=2)
-        self.register_buffer("sins", angles.sin(), persistent=False)
-        self.register_buffer("coss", angles.cos(), persistent=False)
+        angles = repeat(angles, "... d_keys_half -> ... (two d_keys_half)", two=2)
+        self.register_buffer("cos", angles.cos(), persistent=False)
+        assert self.cos.shape[-1] == d_keys
+        self.register_buffer("sin", angles.sin(), persistent=False)
 
     def forward(
         self,
-        in_query_or_key: Float[Tensor, " ... sequence_length d_keys"],
+        keys: Float[Tensor, " ... sequence_length d_keys"],
         token_positions: Int[Tensor, " ... sequence_length"],
-    ):
-        raise NotImplementedError
+    ) -> Float[Tensor, " ... sequence_length d_k"]:
+        cos = self.cos[token_positions]
+        sin = self.sin[token_positions]
+
+        def rotate_half(x):
+            l, r = torch.chunk(x, 2, dim=-1)
+            return torch.cat([-r, l], dim=-1)
+
+        rotated = rotate_half(keys)
+        return cos * keys + sin * rotated
 
 
 def softmax(x: Float[Tensor, " ... "], dim: int):
