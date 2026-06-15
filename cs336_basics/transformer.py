@@ -156,12 +156,14 @@ def scaled_dot_product_attention(
     Q: Float[Tensor, " ... queries d_k"],
     K: Float[Tensor, " ... keys d_k"],
     V: Float[Tensor, " ... keys d_v"],
-    mask: Bool[Tensor, " ... queries keys"] | None = None,
+    attend_mask: Bool[Tensor, " ... queries keys"] | None = None,
 ) -> Float[Tensor, " ... queries d_v"]:
     QK = einsum(Q, K, "... queries d_k, ... keys d_k -> ... queries keys")
     d_k = K.shape[-1]
     scores = QK / sqrt(d_k)
-    scores = scores.masked_fill(~mask, float("-inf"))
+
+    scores = scores.masked_fill(~attend_mask, float("-inf"))
+
     scores = softmax(scores, dim=-1)
     return einsum(scores, V, "... queries keys, ... keys d_v -> ... queries d_v")
 
@@ -175,20 +177,45 @@ class MultiheadSelfAttention(nn.Module):
         device: torch.device | None = None,
         dtype: torch.dtype | None = None,
     ):
+        super().__init__()
+
+        self.num_heads = num_heads
         self.q_proj = Linear(d_in=d_model, d_out=d_model, device=device, dtype=dtype)
         self.k_proj = Linear(d_in=d_model, d_out=d_model, device=device, dtype=dtype)
         self.v_proj = Linear(d_in=d_model, d_out=d_model, device=device, dtype=dtype)
         self.o_proj = Linear(d_in=d_model, d_out=d_model, device=device, dtype=dtype)
+        self.device = device
 
     def forward(
         self, x: Float[Tensor, " ... sequence_length d_model"]
     ) -> Float[Tensor, " ... sequence_length d_model"]:
-        Q = rearrange(
-            self.q_proj(x),
-            " ... sequence_length (num_heads d_k) -> ... num_heads sequence_length d_k",
-        )
-        K = rearrange(
-            self.k_proj(x),
-            " ... sequence_length ( d_k) -> ... num_heads sequence_length d_k",
-        )
+        Q = self.q_proj(x)
+        K = self.k_proj(x)
         V = self.v_proj(x)
+
+        def partition_heads(x):
+            return rearrange(
+                x,
+                " ... seq_len (num_heads d_k) -> ... num_heads seq_len d_k",
+                num_heads=self.num_heads,
+            )
+
+        def concat_heads(x):
+            return rearrange(
+                x,
+                " ... num_heads seq_len d_k -> ... seq_len (num_heads d_k)",
+                num_heads=self.num_heads,
+            )
+
+        Q = partition_heads(Q)
+        K = partition_heads(K)
+        V = partition_heads(V)
+
+        seq_len = x.shape[-2]
+        attend_mask = torch.tril(
+            torch.ones(seq_len, seq_len, device=self.device, dtype=torch.bool)
+        )
+
+        att = scaled_dot_product_attention(Q, K, V, attend_mask)
+        att = concat_heads(att)
+        return self.o_proj(att)

@@ -30,8 +30,6 @@ def run_linear(
     Returns:
         Float[Tensor, "... d_out"]: The transformed output of your linear module.
     """
-    from cs336_basics.transformer import Linear
-
     linear = Linear(d_in=d_in, d_out=d_out)
     linear.load_state_dict({"W": weights})
     return linear(in_features)
@@ -55,9 +53,6 @@ def run_embedding(
     Returns:
         Float[Tensor, "... d_model"]: Batch of embeddings returned by your Embedding layer.
     """
-
-    from cs336_basics.transformer import Embedding
-
     embedding = Embedding(num_embeddings=vocab_size, embedding_dim=d_model)
     embedding.load_state_dict({"W": weights})
     return embedding(token_ids)
@@ -92,8 +87,6 @@ def run_swiglu(
     # swiglu.w1.weight.data = w1_weight
     # swiglu.w2.weight.data = w2_weight
     # swiglu.w3.weight.data = w3_weight
-    from cs336_basics.transformer import Feedforward
-
     ff = Feedforward(d_model=d_model, d_ff=d_ff)
     ff.load_state_dict(
         {"gate_proj.W": w1_weight, "up_proj.W": w3_weight, "down_proj.W": w2_weight}
@@ -153,7 +146,18 @@ def run_multihead_self_attention(
         Float[Tensor, " ... sequence_length d_model"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    q_proj_weight
+    multihead_self_attention = MultiheadSelfAttention(
+        d_model=d_model, num_heads=num_heads
+    )
+    multihead_self_attention.load_state_dict(
+        {
+            "q_proj.W": q_proj_weight,
+            "k_proj.W": k_proj_weight,
+            "v_proj.W": v_proj_weight,
+            "o_proj.W": o_proj_weight,
+        }
+    )
+    return multihead_self_attention(in_features)
 
 
 def run_multihead_self_attention_with_rope(
