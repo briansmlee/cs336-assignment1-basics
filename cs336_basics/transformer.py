@@ -119,7 +119,7 @@ class RoPE(nn.Module):
 
         inverse_frequency = theta ** -(torch.arange(0, d_keys, 2) / d_keys)
         sequence_positions = torch.arange(max_seq_len)
-        # angles = torch.outer(sequence_positions, inverse_frequency)
+        # Same as angles = torch.outer(sequence_positions, inverse_frequency)
         angles = einsum(
             sequence_positions,
             inverse_frequency,
@@ -127,13 +127,15 @@ class RoPE(nn.Module):
         )
         angles = repeat(angles, "... d_keys_half -> ... (two d_keys_half)", two=2)
         self.register_buffer("cos", angles.cos(), persistent=False)
-        assert self.cos.shape[-1] == d_keys
         self.register_buffer("sin", angles.sin(), persistent=False)
+
+        assert self.cos.shape[-1] == d_keys
 
     def forward(
         self,
         keys: Float[Tensor, " ... sequence_length d_keys"],
         token_positions: Int[Tensor, " ... sequence_length"],
+        rotate_adjacent_dims: False,
     ) -> Float[Tensor, " ... sequence_length d_k"]:
         cos = self.cos[token_positions]
         sin = self.sin[token_positions]
@@ -142,8 +144,18 @@ class RoPE(nn.Module):
             l, r = torch.chunk(x, 2, dim=-1)
             return torch.cat([-r, l], dim=-1)
 
+        if rotate_adjacent_dims:
+            # Convert from split-half RoPE to adjacent-dim version
+            keys = rearrange(keys, "... (half two) -> ... (two half)", two=2)
+
         rotated = rotate_half(keys)
-        return cos * keys + sin * rotated
+        out = cos * keys + sin * rotated
+
+        if rotate_adjacent_dims:
+            # Undo from adjacent-dim to split-half
+            out = rearrange(out, "... (two half) -> ... (half two)", two=2)
+
+        return out
 
 
 def softmax(x: Float[Tensor, " ... "], dim: int):
@@ -187,11 +199,11 @@ class MultiheadSelfAttention(nn.Module):
         self.device = device
 
     def forward(
-        self, x: Float[Tensor, " ... sequence_length d_model"]
+        self,
+        x: Float[Tensor, " ... sequence_length d_model"],
+        token_positions: Int[Tensor, "... seq_len"] = None,
     ) -> Float[Tensor, " ... sequence_length d_model"]:
-        Q = self.q_proj(x)
-        K = self.k_proj(x)
-        V = self.v_proj(x)
+        Q, K, V = self.q_proj(x), self.k_proj(x), self.v_proj(x)
 
         def partition_heads(x):
             return rearrange(
@@ -207,9 +219,9 @@ class MultiheadSelfAttention(nn.Module):
                 num_heads=self.num_heads,
             )
 
-        Q = partition_heads(Q)
-        K = partition_heads(K)
-        V = partition_heads(V)
+        Q, K, V = partition_heads(Q), partition_heads(K), partition_heads(V)
+
+        Q, K = self._rotate_qk(Q, token_positions), self._rotate_qk(K, token_positions)
 
         seq_len = x.shape[-2]
         attend_mask = torch.tril(
@@ -219,3 +231,43 @@ class MultiheadSelfAttention(nn.Module):
         att = scaled_dot_product_attention(Q, K, V, attend_mask)
         att = concat_heads(att)
         return self.o_proj(att)
+
+    def _rotate_qk(
+        self,
+        keys: Float[Tensor, " ... seq_len d_k"],
+        token_positions: Int[Tensor, "... seq_len"],
+    ):
+        return keys
+
+
+class MultiheadSelfAttentionWithRope(MultiheadSelfAttention):
+
+    def __init__(
+        self,
+        d_model: int,
+        num_heads: int,
+        max_seq_len: int,
+        theta: float,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
+    ):
+        super().__init__(
+            d_model=d_model,
+            num_heads=num_heads,
+            device=device,
+            dtype=dtype,
+        )
+        self.rope = RoPE(
+            d_keys=d_model // num_heads,
+            theta=theta,
+            max_seq_len=max_seq_len,
+            device=device,
+            dtype=dtype,
+        )
+
+    def _rotate_qk(
+        self,
+        keys: Float[Tensor, " ... seq_len d_k"],
+        token_positions: Int[Tensor, "... seq_len"],
+    ):
+        return self.rope(keys, token_positions, rotate_adjacent_dims=True)

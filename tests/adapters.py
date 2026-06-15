@@ -197,7 +197,18 @@ def run_multihead_self_attention_with_rope(
         Float[Tensor, " ... sequence_length d_model"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    raise NotImplementedError
+    multihead_self_attention = MultiheadSelfAttentionWithRope(
+        d_model=d_model, num_heads=num_heads, max_seq_len=max_seq_len, theta=theta
+    )
+    multihead_self_attention.load_state_dict(
+        {
+            "q_proj.W": q_proj_weight,
+            "k_proj.W": k_proj_weight,
+            "v_proj.W": v_proj_weight,
+            "o_proj.W": o_proj_weight,
+        }
+    )
+    return multihead_self_attention(in_features, token_positions)
 
 
 def run_rope(
@@ -220,10 +231,7 @@ def run_rope(
         Float[Tensor, " ... sequence_length d_k"]: Tensor with RoPEd input.
     """
     rope = RoPE(d_k, theta, max_seq_len)
-    # use split-half RoPE, not adjacent version
-    permuted = rearrange(in_query_or_key, "... (half two) -> ... (two half)", two=2)
-    rotated = rope(permuted, token_positions)
-    return rearrange(rotated, "... (two half) -> ... (half two)", two=2)
+    return rope(in_query_or_key, token_positions, rotate_adjacent_dims=True)
 
 
 def run_transformer_block(
