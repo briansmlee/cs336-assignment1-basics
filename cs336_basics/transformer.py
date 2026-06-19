@@ -48,7 +48,7 @@ class Embedding(nn.Module):
         self.weight = nn.Parameter(weight)
 
     def forward(self, x: Int[Tensor, " ..."]) -> Float[Tensor, " ... d_out"]:
-        return self.W[x]
+        return self.weight[x]
 
 
 class RMSNorm(nn.Module):
@@ -308,4 +308,44 @@ class TransformerBlock(nn.Module):
 
         x = self.attn(self.ln1(x), token_positions=token_positions) + x
         x = self.ffn(self.ln2(x)) + x
+        return x
+
+
+class TransformerLM(nn.Module):
+
+    def __init__(
+        self,
+        vocab_size: int,
+        context_length: int,
+        d_model: int,
+        num_layers: int,
+        num_heads: int,
+        d_ff: int,
+        rope_theta: float,
+    ):
+        super().__init__()
+
+        self.token_embeddings = Embedding(
+            num_embeddings=vocab_size,
+            embedding_dim=d_model,
+        )
+        self.layers = nn.Sequential(
+            *(
+                TransformerBlock(
+                    d_model=d_model,
+                    num_heads=num_heads,
+                    d_ff=d_ff,
+                    max_seq_len=context_length,
+                    theta=rope_theta,
+                )
+                for _ in range(num_layers)
+            )
+        )
+        self.ln_final = RMSNorm(d_model=d_model)
+        self.lm_head = Linear(d_in=d_model, d_out=vocab_size)
+
+    def forward(self, x: Float[Tensor, " batch sequence_length d_model"]):
+        x = self.token_embeddings(x)
+        x = self.layers(x)
+        x = self.lm_head(self.ln_final(x))
         return x
