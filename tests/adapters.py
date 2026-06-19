@@ -31,7 +31,7 @@ def run_linear(
         Float[Tensor, "... d_out"]: The transformed output of your linear module.
     """
     linear = Linear(d_in=d_in, d_out=d_out)
-    linear.load_state_dict({"W": weights})
+    linear.load_state_dict({"weight": weights})
     return linear(in_features)
 
 
@@ -54,7 +54,7 @@ def run_embedding(
         Float[Tensor, "... d_model"]: Batch of embeddings returned by your Embedding layer.
     """
     embedding = Embedding(num_embeddings=vocab_size, embedding_dim=d_model)
-    embedding.load_state_dict({"W": weights})
+    embedding.load_state_dict({"weight": weights})
     return embedding(token_ids)
 
 
@@ -89,7 +89,11 @@ def run_swiglu(
     # swiglu.w3.weight.data = w3_weight
     ff = Feedforward(d_model=d_model, d_ff=d_ff)
     ff.load_state_dict(
-        {"gate_proj.W": w1_weight, "up_proj.W": w3_weight, "down_proj.W": w2_weight}
+        {
+            "w1.weight": w1_weight,
+            "w3.weight": w3_weight,
+            "w2.weight": w2_weight,
+        }
     )
     return ff(in_features)
 
@@ -151,10 +155,10 @@ def run_multihead_self_attention(
     )
     multihead_self_attention.load_state_dict(
         {
-            "q_proj.W": q_proj_weight,
-            "k_proj.W": k_proj_weight,
-            "v_proj.W": v_proj_weight,
-            "o_proj.W": o_proj_weight,
+            "q_proj.weight": q_proj_weight,
+            "k_proj.weight": k_proj_weight,
+            "v_proj.weight": v_proj_weight,
+            "output_proj.weight": o_proj_weight,
         }
     )
     return multihead_self_attention(in_features)
@@ -202,10 +206,10 @@ def run_multihead_self_attention_with_rope(
     )
     multihead_self_attention.load_state_dict(
         {
-            "q_proj.W": q_proj_weight,
-            "k_proj.W": k_proj_weight,
-            "v_proj.W": v_proj_weight,
-            "o_proj.W": o_proj_weight,
+            "q_proj.weight": q_proj_weight,
+            "k_proj.weight": k_proj_weight,
+            "v_proj.weight": v_proj_weight,
+            "output_proj.weight": o_proj_weight,
         }
     )
     return multihead_self_attention(in_features, token_positions)
@@ -304,7 +308,15 @@ def run_transformer_block(
         Float[Tensor, "batch sequence_length d_model"] Tensor with the output of
         running the Transformer block on the input features while using RoPE.
     """
-    raise NotImplementedError
+    block = TransformerBlock(
+        d_model=d_model,
+        num_heads=num_heads,
+        d_ff=d_ff,
+        max_seq_len=max_seq_len,
+        theta=theta,
+    )
+    block.load_state_dict(weights)
+    return block(in_features)
 
 
 def run_transformer_lm(
@@ -412,7 +424,7 @@ def run_rmsnorm(
     from cs336_basics.transformer import RMSNorm
 
     rms_norm = RMSNorm(d_model=d_model, eps=eps)
-    rms_norm.load_state_dict({"G": weights})
+    rms_norm.load_state_dict({"weight": weights})
     return rms_norm(in_features)
 
 
