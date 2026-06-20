@@ -370,22 +370,72 @@ class TransformerLM(nn.Module):
         return x
 
 
-class SGDOptimizer(torch.optim.Optimizer):
+class SGD(torch.optim.Optimizer):
 
     def __init__(self, params, lr=1e-3):
         defaults = {"lr": lr}
         super().__init__(params, defaults)
 
     def step(self):
-        for group in self.param_groups:
-            lr = group["lr"]
-            for param in group["params"]:
+        for param_group in self.param_groups:
+            lr = param_group["lr"]
+            for param in param_group["params"]:
                 if param.grad is None:
                     continue
-
                 state = self.state[param]
                 t = state.get("t", 0)
 
                 param.data -= lr / sqrt(t + 1) * param.grad.data
 
                 state["t"] = t + 1
+
+
+torch.optim.AdamW
+
+
+class AdamW(torch.optim.Optimizer):
+
+    def __init__(
+        self,
+        params,
+        lr: float | Tensor = 1e-3,
+        betas: tuple[float | Tensor, float | Tensor] = (0.9, 0.999),
+        eps: float = 1e-8,
+        weight_decay: float = 1e-2,
+    ):
+        defaults = {
+            "lr": lr,
+            "betas": betas,
+            "eps": eps,
+            "weight_decay": weight_decay,
+        }
+        super().__init__(params, defaults)
+
+    def step(self):
+        for param_group in self.param_groups:
+            lr = param_group["lr"]
+            beta1, beta2 = param_group["betas"]
+            eps = param_group["eps"]
+            weight_decay = param_group["weight_decay"]
+
+            for param in param_group["params"]:
+                if param.grad is None:
+                    continue
+
+                grad = param.grad
+                state = self.state[param]
+
+                step = state.get("step", 1)
+                exp_avg = state.get("exp_avg", torch.zeros_like(param.data))
+                exp_avg_sq = state.get("exp_avg_sq", torch.zeros_like(param.data))
+
+                lr_step = lr * sqrt(1 - beta2**step) / (1 - beta1**step)
+                exp_avg = beta1 * exp_avg + (1 - beta1) * grad
+                exp_avg_sq = beta2 * exp_avg_sq + (1 - beta2) * grad**2
+
+                param.data -= lr * weight_decay * param.data
+                param.data -= lr_step * exp_avg / (exp_avg_sq.sqrt() + eps)
+
+                state["step"] = step + 1
+                state["exp_avg"] = exp_avg
+                state["exp_avg_sq"] = exp_avg_sq
