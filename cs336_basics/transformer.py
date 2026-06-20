@@ -1,5 +1,7 @@
 import torch
 import torch.nn as nn
+import numpy.typing as npt
+import numpy as np
 
 from einops import einsum, reduce, rearrange, repeat
 from math import sqrt, cos, pi
@@ -471,3 +473,19 @@ def gradient_clipping(
     if max_l2_norm < l2_norm:
         for param in params:
             param.grad *= max_l2_norm / (l2_norm + 1e-6)
+
+
+def get_batch(
+    dataset: npt.NDArray, batch_size: int, context_length: int, device: str
+) -> tuple[torch.Tensor, torch.Tensor]:
+    seq_len = dataset.shape[0]
+    begins = np.random.randint(
+        low=0,
+        high=seq_len - context_length,
+        size=batch_size,
+    )
+    offsets = np.arange(context_length)
+    indices = begins[:, None] + offsets[None, :]
+    input_tokens = torch.tensor(dataset[indices], device=device)
+    next_tokens = torch.tensor(dataset[indices + 1], device=device)
+    return (input_tokens, next_tokens)
