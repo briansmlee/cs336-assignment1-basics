@@ -461,4 +461,13 @@ def gradient_clipping(
     parameters: Iterable[torch.nn.Parameter],
     max_l2_norm: float,
 ):
-    None
+    params = list(p for p in parameters if p.grad is not None)
+
+    sum = 0.0
+    for param in params:
+        sum += (param.grad**2).sum()
+    l2_norm = torch.sqrt(sum)
+
+    if max_l2_norm < l2_norm:
+        for param in params:
+            param.grad *= max_l2_norm / (l2_norm + 1e-6)
