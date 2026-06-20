@@ -5,6 +5,8 @@ from einops import einsum, reduce, rearrange, repeat
 from math import sqrt
 from torch import Tensor
 from jaxtyping import Bool, Float, Int
+from typing import Optional
+from collections.abc import Callable, Iterable
 
 
 class Linear(nn.Module):
@@ -366,3 +368,24 @@ class TransformerLM(nn.Module):
         x = self.layers(x)
         x = self.lm_head(self.ln_final(x))
         return x
+
+
+class SGDOptimizer(torch.optim.Optimizer):
+
+    def __init__(self, params, lr=1e-3):
+        defaults = {"lr": lr}
+        super().__init__(params, defaults)
+
+    def step(self):
+        for group in self.param_groups:
+            lr = group["lr"]
+            for param in group["params"]:
+                if param.grad is None:
+                    continue
+
+                state = self.state[param]
+                t = state.get("t", 0)
+
+                param.data -= lr / sqrt(t + 1) * param.grad.data
+
+                state["t"] = t + 1
