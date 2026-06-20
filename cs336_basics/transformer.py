@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 from einops import einsum, reduce, rearrange, repeat
-from math import sqrt
+from math import sqrt, cos, pi
 from torch import Tensor
 from jaxtyping import Bool, Float, Int
 from typing import Optional
@@ -439,3 +439,26 @@ class AdamW(torch.optim.Optimizer):
                 state["step"] = step + 1
                 state["exp_avg"] = exp_avg
                 state["exp_avg_sq"] = exp_avg_sq
+
+
+def cosine_schedule(
+    it: int,
+    warmup_iters: int,
+    cosine_cycle_iters: int,
+    max_lr: float,
+    min_lr: float,
+):
+    if it < warmup_iters:
+        return it / warmup_iters * max_lr
+    elif warmup_iters <= it and it < cosine_cycle_iters:
+        angle = pi * (it - warmup_iters) / (cosine_cycle_iters - warmup_iters)
+        scale = (1 + cos(angle)) / 2.0
+        return min_lr + (max_lr - min_lr) * scale
+    return min_lr
+
+
+def gradient_clipping(
+    parameters: Iterable[torch.nn.Parameter],
+    max_l2_norm: float,
+):
+    None
