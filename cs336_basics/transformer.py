@@ -2,12 +2,13 @@ import torch
 import torch.nn as nn
 import numpy.typing as npt
 import numpy as np
+import os
 
 from einops import einsum, reduce, rearrange, repeat
 from math import sqrt, cos, pi
 from torch import Tensor
 from jaxtyping import Bool, Float, Int
-from typing import Optional
+from typing import Optional, BinaryIO, IO
 from collections.abc import Callable, Iterable
 
 
@@ -489,3 +490,28 @@ def get_batch(
     input_tokens = torch.tensor(dataset[indices], device=device)
     next_tokens = torch.tensor(dataset[indices + 1], device=device)
     return (input_tokens, next_tokens)
+
+
+def save_checkpoint(
+    model: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+    iteration: int,
+    out: str | os.PathLike | BinaryIO | IO[bytes],
+):
+    obj = {
+        "model": model.state_dict(),
+        "optimizer": optimizer.state_dict(),
+        "iteration": iteration,
+    }
+    torch.save(obj, out)
+
+
+def load_checkpoint(
+    src: str | os.PathLike | BinaryIO | IO[bytes],
+    model: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+) -> int:
+    obj = torch.load(src)
+    model.load_state_dict(obj["model"])
+    optimizer.load_state_dict(obj["optimizer"])
+    return obj["iteration"]
