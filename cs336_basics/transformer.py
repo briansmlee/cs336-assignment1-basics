@@ -162,8 +162,23 @@ class RoPE(nn.Module):
 
 def softmax(x: Float[Tensor, " ... "], dim: int):
     max = torch.amax(x, dim=dim, keepdim=True)
-    z = (x - max).exp()
+    x = x - max
+    z = x.exp()
     return z / z.sum(dim=dim, keepdim=True)
+
+
+def cross_entropy(
+    logits: Float[Tensor, " batch_size vocab_size"],
+    targets: Int[Tensor, " batch_size"],
+) -> Float[Tensor, ""]:
+    batch_size = targets.shape[-1]
+
+    max = torch.amax(logits, dim=-1, keepdim=True)
+    logits = logits - max
+
+    ce = logits.exp().sum(dim=-1).log() - logits[torch.arange(batch_size), targets]
+
+    return ce.mean()
 
 
 def scaled_dot_product_attention(
@@ -344,7 +359,9 @@ class TransformerLM(nn.Module):
         self.ln_final = RMSNorm(d_model=d_model)
         self.lm_head = Linear(d_in=d_model, d_out=vocab_size)
 
-    def forward(self, x: Float[Tensor, " batch sequence_length d_model"]):
+    def forward(
+        self, x: Float[Tensor, " batch sequence_length d_model"]
+    ) -> Float[Tensor, " batch_size sequence_length vocab_size"]:
         x = self.token_embeddings(x)
         x = self.layers(x)
         x = self.lm_head(self.ln_final(x))
