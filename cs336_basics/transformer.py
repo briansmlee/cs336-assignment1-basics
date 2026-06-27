@@ -83,7 +83,7 @@ class RMSNorm(nn.Module):
         return result.to(x.dtype)
 
 
-def swiglu(x: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:
+def swish(x: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:
     return x * torch.sigmoid(x)
 
 
@@ -105,7 +105,7 @@ class Feedforward(nn.Module):
     def forward(
         self, x: Float[Tensor, " ... d_model"]
     ) -> Float[Tensor, " ... d_model"]:
-        return self.w2(swiglu(self.w1(x)) * self.w3(x))
+        return self.w2(swish(self.w1(x)) * self.w3(x))
 
 
 class RoPE(nn.Module):

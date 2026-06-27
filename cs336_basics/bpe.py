@@ -12,8 +12,6 @@ These are exposed to the test suite through ``tests/adapters.py``
 (``run_train_bpe`` and ``get_tokenizer``).
 """
 
-from __future__ import annotations
-
 import os
 import regex as re
 import json
@@ -22,9 +20,11 @@ from collections import Counter
 
 PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 
+
 def to_symbols(word):
     utf8 = word.encode("utf-8")
     return tuple(bytes([byte]) for byte in utf8)
+
 
 def train_bpe(
     input_path: str | os.PathLike,
@@ -63,7 +63,7 @@ def train_bpe(
         updated = []
         i = 0
         while i < len(word) - 1:
-            if word[i:i+2] == top_token_pair:
+            if word[i : i + 2] == top_token_pair:
                 updated.append(new_token)
                 i += 2
             else:
@@ -71,7 +71,7 @@ def train_bpe(
                 i += 1
         if i == len(word) - 1:
             updated.append(word[i])
-        
+
         return tuple(updated)
 
     # drops the special tokens.
@@ -84,24 +84,28 @@ def train_bpe(
             for word in re.findall(PAT, document):
                 word_cnt[to_symbols(word)] += 1
 
-    vocab = [bytes([i]) for i in range(256)] + [token.encode("utf-8") for token in special_tokens]
+    vocab = [bytes([i]) for i in range(256)] + [
+        token.encode("utf-8") for token in special_tokens
+    ]
     merges = []
 
     while len(vocab) < vocab_size:
         token_pair_cnt = Counter()
         for word, cnt in word_cnt.items():
             for i in range(len(word) - 1):
-                token_pair_cnt[(word[i], word[i+1])] += cnt
-        
-        _, top_token_pair = max((cnt, token_pair) for token_pair, cnt in token_pair_cnt.items())
-        
+                token_pair_cnt[(word[i], word[i + 1])] += cnt
+
+        _, top_token_pair = max(
+            (cnt, token_pair) for token_pair, cnt in token_pair_cnt.items()
+        )
+
         merges.append(top_token_pair)
         new_token = b"".join(top_token_pair)
         vocab.append(new_token)
 
         word_cnt = Counter({update(word): cnt for word, cnt in word_cnt.items()})
 
-    inverted_vocab = { i : token for i, token in enumerate(vocab)}
+    inverted_vocab = {i: token for i, token in enumerate(vocab)}
     return inverted_vocab, merges
 
 
@@ -129,13 +133,18 @@ class Tokenizer:
                 token and never split.
         """
         special_tokens = special_tokens or []
-        special_token_pattern = "|".join([re.escape(token) for token in sorted(special_tokens, key=len, reverse=True)])
+        special_token_pattern = "|".join(
+            [
+                re.escape(token)
+                for token in sorted(special_tokens, key=len, reverse=True)
+            ]
+        )
         # parenthesis keeps the special tokens.
         self.special_token_pattern = f"({special_token_pattern})"
         self.special_tokens = set(special_tokens)
         self.vocab = vocab
-        self.inverted_vocab = {token : i for i, token in vocab.items()}
-        self.merges = {merge : i for i, merge in enumerate(merges)}
+        self.inverted_vocab = {token: i for i, token in vocab.items()}
+        self.merges = {merge: i for i, merge in enumerate(merges)}
 
     @classmethod
     def from_files(
@@ -159,7 +168,7 @@ class Tokenizer:
             A constructed ``Tokenizer`` instance.
         """
         # vocab = json.load(vocab_filepath)
-        # merges = 
+        # merges =
         # return cls(vocab, , special_tokens)
 
     def encode(self, text: str) -> list[int]:
@@ -171,11 +180,12 @@ class Tokenizer:
         Returns:
             The token IDs representing ``text``.
         """
+
         def apply_merges(cur):
             while True:
                 merge = None
                 for i in range(len(cur) - 1):
-                    pair = (cur[i], cur[i+1])
+                    pair = (cur[i], cur[i + 1])
                     if pair in self.merges:
                         cand = (self.merges[pair], pair)
                         merge = min(cand, merge) if merge else cand
@@ -188,23 +198,27 @@ class Tokenizer:
                 nxt = []
                 i = 0
                 while i < len(cur) - 1:
-                    pair = (cur[i], cur[i+1])
+                    pair = (cur[i], cur[i + 1])
                     if pair == merge_pair:
                         nxt.append(merged)
                         i += 2
                     else:
                         nxt.append(cur[i])
                         i += 1
-                
+
                 if i == len(cur) - 1:
                     nxt.append(cur[i])
-                
+
                 cur = tuple(nxt)
 
         ids = []
-        for document in re.split(self.special_token_pattern, text) if self.special_tokens else [text]:
+        for document in (
+            re.split(self.special_token_pattern, text)
+            if self.special_tokens
+            else [text]
+        ):
             if document in self.special_tokens:
-                utf8 = document.encode("utf-8")    
+                utf8 = document.encode("utf-8")
                 ids.append(self.inverted_vocab[utf8])
             else:
                 for word in re.findall(PAT, document):
@@ -212,7 +226,6 @@ class Tokenizer:
                         ids.append(self.inverted_vocab[token])
 
         return ids
-
 
     def encode_iterable(self, iterable: Iterable[str]) -> Iterator[int]:
         """Lazily encode an iterable of strings into token IDs.
