@@ -111,6 +111,29 @@ def train_bpe(
     return inverted_vocab, merges
 
 
+def save_bpe(
+    inverted_vocab: dict[int, bytes],
+    merges: list[tuple[bytes, bytes]],
+    vocab_filepath: str | os.PathLike,
+    merges_filepath: str | os.PathLike,
+):
+    decoded_vocab = {i: tok.decode("latin-1") for i, tok in inverted_vocab.items()}
+    with open(vocab_filepath, "w", encoding="utf-8") as f:
+        json.dump(
+            decoded_vocab,
+            f,
+            ensure_ascii=False,
+        )
+
+    decoded_merges = [(l.decode("latin-1"), r.decode("latin-1")) for (l, r) in merges]
+    with open(merges_filepath, "w", encoding="utf-8") as f:
+        json.dump(
+            decoded_merges,
+            f,
+            ensure_ascii=False,
+        )
+
+
 class Tokenizer:
     """A byte-level BPE tokenizer.
 
@@ -169,9 +192,15 @@ class Tokenizer:
         Returns:
             A constructed ``Tokenizer`` instance.
         """
-        # vocab = json.load(vocab_filepath)
-        # merges =
-        # return cls(vocab, , special_tokens)
+        with (
+            open(vocab_filepath, "r", encoding="utf-8") as vocab_file,
+            open(merges_filepath, encoding="utf-8") as merges_file,
+        ):
+            vocab = json.load(vocab_file)
+            vocab = {int(i): token.encode("latin-1") for i, token in vocab.items()}
+            merges = json.load(merges_file)
+            merges = [(l.encode("latin-1"), r.encode("latin-1")) for (l, r) in merges]
+            return cls(vocab, merges, special_tokens)
 
     def encode(self, text: str) -> list[int]:
         """Encode an input string into a list of token IDs.
