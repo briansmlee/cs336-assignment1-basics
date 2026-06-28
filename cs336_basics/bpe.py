@@ -1,17 +1,3 @@
-"""Byte-Pair Encoding (BPE) tokenizer.
-
-This module contains the two deliverables for the BPE section of the
-assignment:
-
-  * ``train_bpe`` -- train a byte-level BPE tokenizer on a text corpus and
-    return the learned vocabulary and merges.
-  * ``Tokenizer`` -- a class that uses a trained vocabulary and merge list to
-    encode text into token IDs and decode token IDs back into text.
-
-These are exposed to the test suite through ``tests/adapters.py``
-(``run_train_bpe`` and ``get_tokenizer``).
-"""
-
 import os
 import regex as re
 import json
@@ -21,6 +7,7 @@ from cs336_basics.pretokenization_example import find_chunk_boundaries
 from multiprocessing import Pool
 from itertools import repeat
 from functools import reduce
+from collections import defaultdict
 import operator
 
 PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
@@ -76,6 +63,8 @@ def train_bpe(
         while i < len(word) - 1:
             if word[i : i + 2] == top_token_pair:
                 updated.append(new_token)
+                if i > 0:
+                    
                 i += 2
             else:
                 updated.append(word[i])
@@ -86,24 +75,41 @@ def train_bpe(
         return tuple(updated)
 
     word_cnt = pre_tokenize(input_path, special_tokens)
+    word_cnt = [[word, cnt] for word, cnt in word_cnt.items()]
+
+    token_pair_cnt = Counter()
+    token_pair_word_indices = defaultdict(set)
+    for i, (word, cnt) in enumerate(word_cnt):
+        for j in range(len(word) - 1):
+            token_pair = (word[j], word[j + 1])
+            token_pair_cnt[token_pair] += cnt
+            token_pair_word_indices[token_pair].insert(i)
+
     vocab = [bytes([i]) for i in range(256)] + [
         token.encode("utf-8") for token in special_tokens
     ]
     merges = []
 
     while len(vocab) < vocab_size:
-        token_pair_cnt = Counter()
-        for word, cnt in word_cnt.items():
-            for i in range(len(word) - 1):
-                token_pair_cnt[(word[i], word[i + 1])] += cnt
-
         _, top_token_pair = max(
             (cnt, token_pair) for token_pair, cnt in token_pair_cnt.items()
         )
 
+        for i in token_pair_word_indices[top_token_pair]:
+            word, _ = word_cnt[i]
+            for j in range(len(word) - 1):
+                token_pair = (word[j], word[j + 1])
+                if token_pair == top_token_pair:
+
+
+
+
         merges.append(top_token_pair)
         new_token = b"".join(top_token_pair)
         vocab.append(new_token)
+
+        del token_pair_cnt[token_pair]
+        del token_pair_words[token_pair]
 
         word_cnt = Counter({update(word): cnt for word, cnt in word_cnt.items()})
 
