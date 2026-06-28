@@ -11,8 +11,12 @@ Written / analysis / experiment problems extracted from `cs336_assignment1_basic
 (a) What Unicode character does `chr(0)` return?
 **Deliverable**: A one-sentence response.
 
+NULL character
+
 (b) How does this character's string representation (`__repr__()`) differ from its printed representation?
 **Deliverable**: A one-sentence response.
+
+repr shows '\x00' and print shows nothing. Because repr escapes non-printable control characters into visible form.
 
 (c) What happens when this character occurs in text? It may be helpful to play around with the following in your Python interpreter and see if it matches your expectations:
 ```
@@ -23,7 +27,7 @@ Written / analysis / experiment problems extracted from `cs336_assignment1_basic
 ```
 **Deliverable**: A one-sentence response.
 
-**Answer:**
+NULL character is present in the string, but not printable. NULL character does not terminate the string like C.
 
 ---
 
@@ -31,6 +35,8 @@ Written / analysis / experiment problems extracted from `cs336_assignment1_basic
 
 (a) What are some reasons to prefer training our tokenizer on UTF-8 encoded bytes, rather than UTF-16 or UTF-32? It may be helpful to compare the output of these encodings for various input strings.
 **Deliverable**: A one-to-two sentence response.
+
+UTF-8 is most compact, so shorter context. No endianness and compatible with ASCII.
 
 (b) Consider the following (incorrect) function, which is intended to decode a UTF-8 byte string into a Unicode string. Why is this function incorrect? Provide an example of an input byte string that yields incorrect results.
 ```python
@@ -41,10 +47,14 @@ def decode_utf8_bytes_to_str_wrong(bytestring: bytes):
 ```
 **Deliverable**: An example input byte string for which `decode_utf8_bytes_to_str_wrong` produces incorrect output, with a one-sentence explanation of why the function is incorrect.
 
+"こ". Given multi-byte UTF-8 unicode character, function is incorrect because it decodes one byte at a time.  
+
 (c) Give a two-byte sequence that does not decode to any Unicode character(s).
 **Deliverable**: An example, with a one-sentence explanation.
 
-**Answer:**
+b'\xff\xff'. Not a legal byte.
+
+b'\xe3\x81'. \xe3 indicates 3-byte sequence but missing third byte.
 
 ---
 
