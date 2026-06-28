@@ -17,13 +17,50 @@ import regex as re
 import json
 from collections.abc import Iterable, Iterator
 from collections import Counter
+from cs336_basics.pretokenization_example import find_chunk_boundaries
+from multiprocessing import Pool
+from itertools import repeat
+from functools import reduce
+import operator
 
 PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+NUM_PROCESSES = os.cpu_count()
 
 
-def to_symbols(word):
-    utf8 = word.encode("utf-8")
-    return tuple(bytes([byte]) for byte in utf8)
+def to_utf8_tuple(word):
+    return tuple(bytes([byte]) for byte in word.encode("utf-8"))
+
+
+def pre_tokenize_range(file_path, special_token_pattern, begin, end) -> Counter:
+    word_cnt = Counter()
+    with open(file_path, "rb") as f:
+        f.seek(begin)
+        text = f.read(end - begin).decode("utf-8", errors="ignore")
+        for document in re.split(special_token_pattern, text):
+            for word in re.findall(PAT, document):
+                encoded = to_utf8_tuple(word)
+                word_cnt[encoded] += 1
+
+    return word_cnt
+
+
+def pre_tokenize(path, special_tokens: list[str]):
+    # drops the special tokens.
+    special_token_pattern = "|".join([re.escape(token) for token in special_tokens])
+
+    with open(path, "rb") as f:
+        boundaries = find_chunk_boundaries(
+            f, NUM_PROCESSES, "<|endoftext|>".encode("utf-8")
+        )
+        args = zip(
+            repeat(path),
+            repeat(special_token_pattern),
+            boundaries[:-1],
+            boundaries[1:],
+        )
+        with Pool(NUM_PROCESSES) as pool:
+            counters = pool.starmap(pre_tokenize_range, args)
+            return reduce(operator.add, counters, Counter())
 
 
 def train_bpe(
@@ -32,32 +69,6 @@ def train_bpe(
     special_tokens: list[str],
     **kwargs,
 ) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
-    """Train a byte-level BPE tokenizer on the corpus at ``input_path``.
-
-    Args:
-        input_path: Path to a UTF-8 text file to train on.
-        vocab_size: Target vocabulary size, including the initial 256 bytes and
-            all special tokens.
-        special_tokens: Strings that must each map to a single token and never
-            be split or merged with surrounding text.
-
-    Returns:
-        vocab: Mapping from token ID to its byte sequence.
-        merges: Ordered list of merged byte-pairs ``(token1, token2)``, in the
-            order the merges were created.
-    """
-
-    """
-    my notes
-    
-    word is list of tokens. token is one or more utf-8 bytes.
-
-    - read file as unicode text
-    - split (and drop) by special tokens
-    - pre-tokenize with regex to word -> cnt
-    - encode word from unicode to utf-8
-    - merge top token pair, then update each word, until given vocab size
-    """
 
     def update(word):
         updated = []
@@ -74,16 +85,7 @@ def train_bpe(
 
         return tuple(updated)
 
-    # drops the special tokens.
-    special_token_pattern = "|".join([re.escape(token) for token in special_tokens])
-
-    word_cnt = Counter()
-    with open(input_path) as f:
-        text = f.read()
-        for document in re.split(special_token_pattern, text):
-            for word in re.findall(PAT, document):
-                word_cnt[to_symbols(word)] += 1
-
+    word_cnt = pre_tokenize(input_path, special_tokens)
     vocab = [bytes([i]) for i in range(256)] + [
         token.encode("utf-8") for token in special_tokens
     ]
@@ -222,7 +224,7 @@ class Tokenizer:
                 ids.append(self.inverted_vocab[utf8])
             else:
                 for word in re.findall(PAT, document):
-                    for token in apply_merges(to_symbols(word)):
+                    for token in apply_merges(to_utf8_tuple(word)):
                         ids.append(self.inverted_vocab[token])
 
         return ids
