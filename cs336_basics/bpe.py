@@ -8,7 +8,15 @@ from multiprocessing import Pool
 from itertools import repeat
 from functools import reduce
 from collections import defaultdict
+from dataclasses import dataclass, field
 import operator
+
+
+@dataclass
+class TokenPairInfo:
+    count: int = 0
+    word_indices: set = field(default_factory=set)
+
 
 PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 NUM_PROCESSES = os.cpu_count()
@@ -57,61 +65,62 @@ def train_bpe(
     **kwargs,
 ) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
 
-    def update(word):
-        updated = []
-        i = 0
-        while i < len(word) - 1:
-            if word[i : i + 2] == top_token_pair:
-                updated.append(new_token)
-                if i > 0:
-                    
-                i += 2
-            else:
-                updated.append(word[i])
-                i += 1
-        if i == len(word) - 1:
-            updated.append(word[i])
-
-        return tuple(updated)
-
     word_cnt = pre_tokenize(input_path, special_tokens)
-    word_cnt = [[word, cnt] for word, cnt in word_cnt.items()]
+    word_cnt = [(word, cnt) for word, cnt in word_cnt.items()]
 
-    token_pair_cnt = Counter()
-    token_pair_word_indices = defaultdict(set)
-    for i, (word, cnt) in enumerate(word_cnt):
+    token_pair_info = defaultdict(TokenPairInfo)
+    for word_i, (word, cnt) in enumerate(word_cnt):
         for j in range(len(word) - 1):
             token_pair = (word[j], word[j + 1])
-            token_pair_cnt[token_pair] += cnt
-            token_pair_word_indices[token_pair].insert(i)
+            token_pair_info[token_pair].count += cnt
+            token_pair_info[token_pair].word_indices.add(word_i)
 
     vocab = [bytes([i]) for i in range(256)] + [
         token.encode("utf-8") for token in special_tokens
     ]
     merges = []
 
+    def update(
+        word: tuple[bytes],
+        top_token_pair: tuple[bytes],
+    ) -> tuple[bytes]:
+        new_word = []
+        i = 0
+        while i < len(word) - 1:
+            if word[i : i + 2] == top_token_pair:
+                new_word.append(b"".join(top_token_pair))
+                i += 2
+            else:
+                new_word.append(word[i])
+                i += 1
+
+        if i == len(word) - 1:
+            new_word.append(word[i])
+
+        return tuple(new_word)
+
     while len(vocab) < vocab_size:
         _, top_token_pair = max(
-            (cnt, token_pair) for token_pair, cnt in token_pair_cnt.items()
+            (info.count, token_pair) for token_pair, info in token_pair_info.items()
         )
 
-        for i in token_pair_word_indices[top_token_pair]:
-            word, _ = word_cnt[i]
+        for word_i in token_pair_info[top_token_pair].word_indices.copy():
+            word, cnt = word_cnt[word_i]
             for j in range(len(word) - 1):
-                token_pair = (word[j], word[j + 1])
-                if token_pair == top_token_pair:
+                token_pair_info[word[j : j + 2]].count -= cnt
+                token_pair_info[word[j : j + 2]].word_indices.discard(word_i)
 
+            new_word = update(word, top_token_pair)
 
+            for j in range(len(new_word) - 1):
+                token_pair_info[new_word[j : j + 2]].count += cnt
+                token_pair_info[new_word[j : j + 2]].word_indices.add(word_i)
 
+            word_cnt[word_i] = (new_word, cnt)
 
+        token_pair_info.pop(top_token_pair)
         merges.append(top_token_pair)
-        new_token = b"".join(top_token_pair)
-        vocab.append(new_token)
-
-        del token_pair_cnt[token_pair]
-        del token_pair_words[token_pair]
-
-        word_cnt = Counter({update(word): cnt for word, cnt in word_cnt.items()})
+        vocab.append(b"".join(top_token_pair))
 
     inverted_vocab = {i: token for i, token in enumerate(vocab)}
     return inverted_vocab, merges
