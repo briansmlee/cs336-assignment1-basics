@@ -19,7 +19,7 @@ class TokenPairInfo:
 
 
 PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
-NUM_PROCESSES = os.cpu_count()
+NUM_PROCESSES = os.cpu_count() - 1
 
 
 def to_utf8_tuple(word):
@@ -107,18 +107,22 @@ def train_bpe(
         for word_i in token_pair_info[top_token_pair].word_indices.copy():
             word, cnt = word_cnt[word_i]
             for j in range(len(word) - 1):
-                token_pair_info[word[j : j + 2]].count -= cnt
-                token_pair_info[word[j : j + 2]].word_indices.discard(word_i)
+                token_pair = word[j : j + 2]
+                info = token_pair_info[token_pair]
+                info.word_indices.discard(word_i)
+                info.count -= cnt
+                if info.count == 0:
+                    token_pair_info.pop(token_pair)
 
             new_word = update(word, top_token_pair)
 
             for j in range(len(new_word) - 1):
-                token_pair_info[new_word[j : j + 2]].count += cnt
-                token_pair_info[new_word[j : j + 2]].word_indices.add(word_i)
+                info = token_pair_info[new_word[j : j + 2]]
+                info.word_indices.add(word_i)
+                info.count += cnt
 
             word_cnt[word_i] = (new_word, cnt)
 
-        token_pair_info.pop(top_token_pair)
         merges.append(top_token_pair)
         vocab.append(b"".join(top_token_pair))
 
