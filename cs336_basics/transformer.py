@@ -365,7 +365,7 @@ class TransformerLM(nn.Module):
         self.lm_head = Linear(d_in=d_model, d_out=vocab_size)
 
     def forward(
-        self, x: Float[Tensor, " batch sequence_length d_model"]
+        self, x: Int[Tensor, " batch sequence_length"]
     ) -> Float[Tensor, " batch_size sequence_length vocab_size"]:
         x = self.token_embeddings(x)
         x = self.layers(x)

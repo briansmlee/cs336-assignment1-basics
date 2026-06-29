@@ -72,10 +72,13 @@ Hint: You should be able to get under 2 minutes for BPE training using `multipro
 -   (b) The `<|endoftext|>` token is handled as a special case before the BPE merges are applied.
 **Deliverable**: A one-to-two sentence response.
 
+- ~2 minutes, 825MB.
+- Longest tokens are b' accomplishment', b' disappointment', b' responsibility', which have length 15. This makes sense because these are common whole words.
+
 (b) Profile your code. What part of the tokenizer training process takes the most time?
 **Deliverable**: A one-to-two sentence response.
 
-**Answer:**
+pre-tokenization takes most time.
 
 ---
 
@@ -124,6 +127,27 @@ Resource requirements: ≤ 12 hours (no GPUs), ≤ 100 GB RAM.
 
 Suppose we constructed our model using this configuration. How many trainable parameters would our model have? Assuming each parameter is represented using single-precision floating point, how much memory is required to just load this model?
 **Deliverable**: A one-to-two sentence response.
+
+- embeddings: vocab_size * d_model 
+- transformer layers: num_heads *
+  - ln1: d_model
+  - attn:
+    - q,k,v,out: 4 * d_model * d_model
+  - ln2: d_model
+  - ffn:
+    - down,gate,up: 3 * d_model * d_ff (vanilla FFN has 8 * d_model * d_model)
+- ln_final: d_model
+- lm_head: d_model * vocab_size
+
+Sum is:
+
+2 * vocab_size * d_model + d_model + num_layers · (2 * d_model + 4 * d_model * d_model + 3 * d_model * d_ff)
+
+When rounded:
+
+2 * vocab_size * d_model + num_layers * 12 * d_model * d_model
+
+So roughly 1.6B parameters. So memory required is 6.5GB.
 
 (b) Identify the matrix multiplies required to complete a forward pass of our GPT-2 XL-shaped model. How many FLOPs do these matrix multiplies require in total? Assume that our input sequence has `context_length` tokens.
 **Deliverable**: A list of matrix multiplies (with descriptions), and the total number of FLOPs required.
