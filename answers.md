@@ -141,27 +141,82 @@ Suppose we constructed our model using this configuration. How many trainable pa
 
 Sum is:
 
-2 * vocab_size * d_model + d_model + num_layers · (2 * d_model + 4 * d_model * d_model + 3 * d_model * d_ff)
+num_layers * (
+  4 * d_model * d_model // q,k,v,o
+  + 3 * d_model * d_ff // FFN, or (8 * d_model * d_model)
+  + 2 * d_model // ln
+)
++ 2 * vocab_size * d_model // Embeddings, Head
++ d_model // ln
 
-When rounded:
+When rounded (remove ln and round FFN):
 
-2 * vocab_size * d_model + num_layers * 12 * d_model * d_model
+num_layers * 12 * d_model^2 
++ 2 * vocab_size * d_model
 
-So roughly 1.6B parameters. So memory required is 6.5GB.
+So roughly 1.6B parameters. So memory required is 6.5GB with 4B per parameter.
 
 (b) Identify the matrix multiplies required to complete a forward pass of our GPT-2 XL-shaped model. How many FLOPs do these matrix multiplies require in total? Assume that our input sequence has `context_length` tokens.
 **Deliverable**: A list of matrix multiplies (with descriptions), and the total number of FLOPs required.
 
+- Transformer Layers: num_layers *
+  - Attention
+    - q,k,v: 3 * (context_length, d_model) @ (d_model, d_model)
+    - MHA: num_heads *
+      - QK: (context_length, d_head) @ (d_head, context_length)
+      - (QK)V: (context_length, context_length) @ (context_length, d_head)
+    - o: (context_length, d_model) @ (d_model, d_model)
+  - FFN
+    - up: (context_length, d_model) @ (d_model, d_ff)
+    - gate: (context_length, d_model) @ (d_model, d_ff)
+    - down: (context_length, d_ff) @ (d_ff, d_model)
+- (context_length, d_model) @ (d_model, vocab_size)
+
+FLOPs = 2 * (
+  num_layers * (
+    4 * context_length * d_model^2 // Projections k,v,q,o 
+    + 2 * d_model * context_length^2 // QKV. num_heads * d_head becomes d_model
+    + context_length * 8 * d_model^2 // FFN. (3 * d_model * d_ff) becomes (8 * d_model^2)
+  )
+  + context_length * d_model * vocab_size // Head
+)
+
+= 2 * (
+  num_layers * (
+    context_length * 12 * d_model^2 // Forward pass in k,v,q,o and FFN
+    + 2 * d_model * context_length^2 // QKV
+  )
+  + context_length * d_model * vocab_size // Head
+)
+
+(Note forward pass is 2 * num_params * tokens!)
+
+GPT-2 XL FLOPs = 2 * (
+  48 * (
+    4 * 1024 * 1600^2
+    + 2 * 1600 * 1024^2
+    + 3 * 1024 * 1600 * 4288
+  )
+  + 1024 * 1600 * 50257
+)
+= 3.52T FLOPs
+
 (c) Based on your analysis above, which parts of the model require the most FLOPs?
 **Deliverable**: A one-to-two sentence response.
+
+FFN requires most FLOPs.
 
 (d) Repeat your analysis with GPT-2 small (12 layers, 768 `d_model`, 12 heads), GPT-2 medium (24 layers, 1024 `d_model`, 16 heads), and GPT-2 large (36 layers, 1280 `d_model`, 20 heads). As the model size increases, which parts of the Transformer LM take up proportionally more or less of the total FLOPs?
 **Deliverable**: For each model, provide a breakdown of model components and its associated FLOPs (as a proportion of the total FLOPs required for a forward pass). In addition, provide a one-to-two sentence description of how varying the model size changes the proportional FLOPs of each component.
 
+Share of forward pass (q,k,v,o projects and FFN) rise, because their FLOPs scale with d_model^2.
+
 (e) Take GPT-2 XL and increase the context length to 16,384. How does the total FLOPs for one forward pass change? How does the relative contribution of FLOPs of the model components change?
 **Deliverable**: A one-to-two sentence response.
 
-**Answer:**
+Total FLOPs is 133.6T, 38x.
+
+Contribution of attention grows from 9% to 61%. Because attention scales with context_length^2.
 
 ---
 
