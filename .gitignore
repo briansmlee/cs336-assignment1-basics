@@ -162,5 +162,15 @@ cython_debug/
 .ruff_cache/
 *.zip
 
-# Training corpora (large; downloaded separately)
-data/
+# Training corpora (large; downloaded separately). Ignore everything under data/
+# EXCEPT the small trained tokenizer artifacts (vocab/merges), which are cheap to
+# store and expensive to regenerate.
+data/*
+!data/tinystories/
+data/tinystories/*
+!data/tinystories/vocab.json
+!data/tinystories/merges.json
+!data/owt/
+data/owt/*
+!data/owt/vocab.json
+!data/owt/merges.json
