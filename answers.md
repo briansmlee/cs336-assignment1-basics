@@ -128,6 +128,8 @@ Resource requirements: ≤ 12 hours (no GPUs), ≤ 100 GB RAM.
 Suppose we constructed our model using this configuration. How many trainable parameters would our model have? Assuming each parameter is represented using single-precision floating point, how much memory is required to just load this model?
 **Deliverable**: A one-to-two sentence response.
 
+**num_layers * 12 * d_model^2 + 2 * vocab_size * d_model**
+
 - embeddings: vocab_size * d_model 
 - transformer layers: num_heads *
   - ln1: d_model
@@ -151,13 +153,19 @@ num_layers * (
 
 When rounded (remove ln and round FFN):
 
-num_layers * 12 * d_model^2 
-+ 2 * vocab_size * d_model
+num_layers * 12 * d_model^2 + 2 * vocab_size * d_model
 
-So roughly 1.6B parameters. So memory required is 6.5GB with 4B per parameter.
+So roughly 1.6B parameters. So memory required is 6.5GB, with 4B per parameter.
 
 (b) Identify the matrix multiplies required to complete a forward pass of our GPT-2 XL-shaped model. How many FLOPs do these matrix multiplies require in total? Assume that our input sequence has `context_length` tokens.
 **Deliverable**: A list of matrix multiplies (with descriptions), and the total number of FLOPs required.
+
+Note matmul forward pass FLOPs is 2 * num_params * tokens!
+
+TransformerLM FLOPs is forward pass + attention + head. This is:
+- Forward pass: 2 * (num_layers * 12 * d_model^2) * context_length
+- Attention (QK^T, SV): num_layers * 2 * 2 * d_model * context_length^2
+- Head: 2 * d_model * vocab_size * context_length
 
 - Transformer Layers: num_layers *
   - Attention
@@ -188,8 +196,6 @@ FLOPs = 2 * (
   )
   + context_length * d_model * vocab_size // Head
 )
-
-(Note forward pass is 2 * num_params * tokens!)
 
 GPT-2 XL FLOPs = 2 * (
   48 * (
@@ -247,16 +253,59 @@ For simplicity, when calculating memory usage of activations, consider only the 
 
 **Deliverable**: An algebraic expression for each of parameters, activations, gradients, and optimizer state, as well as the total.
 
+parameters + gradients + optimizer state = 4 * parameters. So approximately:
+
+4 * (num_layers * 12 * d_model^2 + 2 * d_model * vocab_size) * 4B = 26GB
+
+Activations:
+
+batch * (
+  - Transformer: num_layers * (
+      - Attention
+        - Projections: 4 * context_length * d_model
+        - QK, Softmax: 2 * num_heads * context_length^2
+        - QKV: context_length * d_model
+      - FFN
+        - up,gate,swish,element-wise product: 4 * context_length * d_ff
+        - down: context_length * d_model
+      - RMSNorm: 2 * context_length * d_model
+  )
+  - RMSNorm: context_length * d_model
+  - Head, CE: 2 * context_length * vocab_size
+)
+
+batch_size * [
+  num_layers * [
+    18.67 * context_length * d_model
+    + 2 * num_heads * context_length^2
+  ]
+  + context_length * d_model
+  + 2 * context_length * vocab_size
+]
+
 (b) Instantiate your answer for a GPT-2 XL-shaped model to get an expression that only depends on the `batch_size`. What is the maximum batch size you can use and still fit within 80GB memory?
 **Deliverable**: An expression that looks like a · batch_size + b for numerical values a, b, and a number representing the maximum batch size.
+
+16.36GB * batch_size + 26.17GB. Max batch size is 3.
 
 (c) How many FLOPs does running one step of AdamW take?
 **Deliverable**: An algebraic expression, with a brief justification.
 
+For matmul `Y = W @ X`, backward pass requires two matmuls. This is because backward pass needs to compute `dW = X @ dY` (gradient for weights) and `dX = W @ dY` (gradient to pass upstream). This is same for attention matmuls, `Y = Q @ K`.
+
+The parameter updates require constant * num_params FLOPs, which is negligible.
+
+So one training step takes 3 * (forward FLOPs) = 10.6T FLOPs.
+
 (d) Model FLOPs utilization (MFU) is defined as the ratio of observed throughput (tokens per second) relative to the hardware's theoretical peak FLOP throughput. An NVIDIA H100 GPU has a theoretical peak of 495 teraFLOP/s for "float32" (actually TensorFloat-32, which is really "bfloat19") operations. Assuming you are able to get 50% MFU, how long would it take to train a GPT-2 XL for 400K steps and a batch size of 1024 on a single H100? Following Kaplan et al. and Hoffmann et al., assume that the backward pass has twice the FLOPs of the forward pass.
 **Deliverable**: The number of hours training would take, with a brief justification.
 
-**Answer:**
+FLOPs
+= steps * batch_size * training FLOPs
+= 400K * 1024 * 10.6T
+= 4.34 * 10^21
+
+Time = 4.34e21 / 2.475e14 FLOP/s = 202 days.
 
 ---
 

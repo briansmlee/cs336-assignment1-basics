@@ -375,25 +375,31 @@ class TransformerLM(nn.Module):
 
 class SGD(torch.optim.Optimizer):
 
-    def __init__(self, params, lr=1e-3):
-        defaults = {"lr": lr}
+    def __init__(
+        self,
+        params,
+        lr: float | Tensor = 1e-3,
+    ):
+        defaults = {
+            "lr": lr,
+        }
         super().__init__(params, defaults)
 
     def step(self):
         for param_group in self.param_groups:
             lr = param_group["lr"]
+
             for param in param_group["params"]:
                 if param.grad is None:
                     continue
+
+                grad = param.grad
                 state = self.state[param]
-                t = state.get("t", 0)
+                step = state.get("step", 0)
 
-                param.data -= lr / sqrt(t + 1) * param.grad.data
+                param.data -= lr / sqrt(step + 1) * grad
 
-                state["t"] = t + 1
-
-
-torch.optim.AdamW
+                state["step"] = step + 1
 
 
 class AdamW(torch.optim.Optimizer):
