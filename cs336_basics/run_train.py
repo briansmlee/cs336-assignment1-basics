@@ -7,27 +7,27 @@ from dataclasses import dataclass, field
 @dataclass
 class ModelConfig:
     vocab_size: int = 10_000  # must match your tokenizer's vocab
-    context_length: int = 64
-    d_model: int = 128
-    num_layers: int = 2
-    num_heads: int = 4
-    d_ff: int = 344
+    context_length: int = 256
+    d_model: int = 512
+    num_layers: int = 4
+    num_heads: int = 16
+    d_ff: int = 1344
     rope_theta: float = 10_000.0
 
 
 @dataclass
 class AdamWConfig:
-    betas: tuple[float, float] = (0.9, 0.999)
+    betas: tuple[float, float] = (0.9, 0.95)
     eps: float = 1e-8
-    weight_decay: float = 0.0
+    weight_decay: float = 0.1
 
 
 @dataclass
 class ScheduleConfig:
-    warmup_steps: int = 100
-    max_steps: int = 200
-    max_lr: float = 3e-3
-    min_lr: float = 3e-4
+    max_steps: int = 30_000
+    warmup_steps: int = 900
+    max_lr: float = 1e-3
+    min_lr: float = 1e-4
 
 
 @dataclass
@@ -39,9 +39,9 @@ class OptimConfig:
 
 @dataclass
 class DataConfig:
-    train_filepath: str = "data/tinystories/valid_tokens.npy"
+    train_filepath: str = "data/tinystories/train_tokens.npy"
     checkpoint_path: str = "checkpoints/tinystories.pt"
-    batch_size: int = 8
+    batch_size: int = 128
 
 
 model_cfg = ModelConfig()
@@ -79,7 +79,8 @@ def main():
             logits.view(-1, logits.size(-1)),  # (batch * context_length, vocab)
             targets.view(-1),  # (batch * context_length)
         )
-        print(loss.cpu().item())
+        if step % 100 == 0:
+            print(step, loss.cpu().item())
 
         # backward
         loss.backward()  # Run backward pass, which computes gradients
