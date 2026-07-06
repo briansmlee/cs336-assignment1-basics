@@ -174,3 +174,6 @@ data/tinystories/*
 data/owt/*
 !data/owt/vocab.json
 !data/owt/merges.json
+
+# Profiling artifacts (py-spy flamegraphs, etc.)
+*.svg
