@@ -177,3 +177,6 @@ data/owt/*
 
 # Profiling artifacts (py-spy flamegraphs, etc.)
 *.svg
+
+# Training checkpoints (large; regenerable)
+checkpoints/

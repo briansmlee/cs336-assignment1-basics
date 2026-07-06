@@ -493,8 +493,8 @@ def get_batch(
     )
     offsets = np.arange(context_length)
     indices = begins[:, None] + offsets[None, :]
-    input_tokens = torch.tensor(dataset[indices], device=device)
-    next_tokens = torch.tensor(dataset[indices + 1], device=device)
+    input_tokens = torch.tensor(dataset[indices], device=device, dtype=torch.long)
+    next_tokens = torch.tensor(dataset[indices + 1], device=device, dtype=torch.long)
     return (input_tokens, next_tokens)
 
 
