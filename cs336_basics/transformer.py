@@ -249,7 +249,7 @@ class MultiheadSelfAttention(nn.Module):
 
         seq_len = x.shape[-2]
         attend_mask = torch.tril(
-            torch.ones(seq_len, seq_len, device=self.device, dtype=torch.bool)
+            torch.ones(seq_len, seq_len, device=x.device, dtype=torch.bool)
         )
 
         att = scaled_dot_product_attention(Q, K, V, attend_mask)
