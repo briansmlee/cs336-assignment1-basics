@@ -71,16 +71,18 @@ def main():
             device=device,
         )
 
-        # forward
-        logits = model(inputs)
+        with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+            # forward
+            logits = model(inputs)
 
-        # loss
-        loss = cross_entropy(
-            logits.view(-1, logits.size(-1)),  # (batch * context_length, vocab)
-            targets.view(-1),  # (batch * context_length)
-        )
+            # loss
+            loss = cross_entropy(
+                logits.view(-1, logits.size(-1)),  # (batch * context_length, vocab)
+                targets.view(-1),  # (batch * context_length)
+            )
+        
         if step % 100 == 0:
-            print(step, loss.cpu().item())
+            print(f"Step: {step}, Loss: {loss.cpu().item()}")
 
         # backward
         loss.backward()  # Run backward pass, which computes gradients
